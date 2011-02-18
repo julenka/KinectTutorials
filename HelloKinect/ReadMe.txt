@@ -1,18 +1,15 @@
 ========================================================================
-    CONSOLE APPLICATION : HelloKinect Project Overview
+HelloKinect Overview
 ========================================================================
 
-AppWizard has created this HelloKinect application for you.
-
-This file contains a summary of what you will find in each of the files that
-make up your HelloKinect application.
-
+This project contains a very basic "Hello World" app for Kinect (written in C++).
+Written by Julia Schwarz, 2011. Note that your reference settings may be different
+than mine, so be sure to follow instructions available from http://www.codingbeta.com/?p=24 to configure your project correctly, as you'll likely have different paths to the libraries you'll be importing.
 
 HelloKinect.vcxproj
     This is the main project file for VC++ projects generated using an Application Wizard.
     It contains information about the version of Visual C++ that generated the file, and
-    information about the platforms, configurations, and project features selected with the
-    Application Wizard.
+    information about the platforms, configurations, and project features.
 
 HelloKinect.vcxproj.filters
     This is the filters file for VC++ projects generated using an Application Wizard. 
@@ -31,10 +28,4 @@ StdAfx.h, StdAfx.cpp
     These files are used to build a precompiled header (PCH) file
     named HelloKinect.pch and a precompiled types file named StdAfx.obj.
 
-/////////////////////////////////////////////////////////////////////////////
-Other notes:
 
-AppWizard uses "TODO:" comments to indicate parts of the source code you
-should add to or customize.
-
-/////////////////////////////////////////////////////////////////////////////
