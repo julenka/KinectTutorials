@@ -14,208 +14,116 @@ using System.Windows.Shapes;
 using xn;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Windows.Threading;
+using System.IO;
 
+/// This is a very basic class which shows a depth view from the Kinect.
+/// It uses the OpenNI framework to get the depth image and then dispalys
+/// the depth image on an image in the frame. 
+/// 
+/// //////////////////// Important /////////////////////////////////////
+/// Make sure to add ../lib/OpenNI.dll to your list of references otherwise
+/// the program won't build. For instructions on how to install the kinect
+/// drivers and OpenNI framework used in this program visit 
+/// http://www.codingbeta.com/?p=10
+/// 
+/// Also, remember to set the "allow unsafe code" property to true in project properties.
+/// by Julia Schwarz
+/// http://www.codingbeta.com
+/// http://juliaschwarz.net
 namespace DepthViewer
 {
 
-    /// <summary>
-    /// Step 1: draw a depth map on the depthImage picture in the app
-    /// </summary>
     public partial class MainWindow : Window
     {
-        private Context context;
-        private DepthGenerator depth;
-        private ImageGenerator rgb;
-        private Bitmap bitmap;
-        private int[] histogram;
+        #region Member Variables
+        private Context context;                            // The OpenNI context used for most OpenNI-related operations
+        private DepthGenerator depth;                       // This will generate the depth image for you
+        private Bitmap bitmap;                              // We will copy the depth image to this bitmap
+        #endregion
 
         public MainWindow()
         {
             InitializeComponent();
         }
 
-        private unsafe void UpdateRGB()
-        {
-            xn.ImageMetaData rgbMD = new xn.ImageMetaData();
-
-
-            System.Drawing.Rectangle rect = new System.Drawing.Rectangle(0, 0, this.bitmap.Width, this.bitmap.Height);
-            BitmapData data = this.bitmap.LockBits(rect, ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-
-            this.rgb.GetMetaData(rgbMD);
-
-            byte* pDepth = (byte*)this.rgb.GetImageMapPtr().ToPointer();
-
-            // set pixels
-            for (int y = 0; y < rgbMD.YRes; ++y)
-            {
-                byte* pDest = (byte*)data.Scan0.ToPointer() + y * data.Stride;
-                for (int x = 0; x < rgbMD.XRes; ++x, pDepth += 3, pDest += 3)
-                {
-                    byte r = *pDepth;// *pDepth;
-                    byte g = *(pDepth + 1);
-                    byte b = *(pDepth + 2);
-                    pDest[0] = b;
-                    pDest[1] = g;
-                    pDest[2] = r;
-                }
-            }
-
-            this.bitmap.UnlockBits(data);
-
-
-            rgbImage.Source = Utils.getBitmapImage(bitmap);
-        }
+        /// <summary>
+        /// This method updates the image on the MainWindow page with the latest depth image.
+        /// </summary>
         private unsafe void UpdateDepth()
         {
+            // Get information about the depth image
             DepthMetaData depthMD = new DepthMetaData();
 
-
+            // Lock the bitmap we will be copying to just in case. This will also give us a pointer to the bitmap.
             System.Drawing.Rectangle rect = new System.Drawing.Rectangle(0, 0, this.bitmap.Width, this.bitmap.Height);
             BitmapData data = this.bitmap.LockBits(rect, ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            
+            depth.GetMetaData(depthMD);
 
-            this.depth.GetMetaData(depthMD);
-
-            CalcHist(depthMD);
-
+            // This will point to our depth image
             ushort* pDepth = (ushort*)this.depth.GetDepthMapPtr().ToPointer();
 
-            // set pixels
+            // Go over the depth image and set the bitmap we're copying to based on our depth value.
             for (int y = 0; y < depthMD.YRes; ++y)
             {
                 byte* pDest = (byte*)data.Scan0.ToPointer() + y * data.Stride;
                 for (int x = 0; x < depthMD.XRes; ++x, ++pDepth, pDest += 3)
                 {
-                    byte pixel = (byte)this.histogram[*pDepth];
-                    pDest[0] = 0;
-                    pDest[1] = pixel;
-                    pDest[2] = pixel;
+                    // Change the color of the bitmap based on the depth value. You can make this
+                    // whatever you want, my particular version is not that pretty.
+                    pDest[0] = (byte)(*pDepth >> 2);
+                    pDest[1] = (byte)(*pDepth >> 3);
+                    pDest[2] = (byte)(*pDepth >> 4);
                 }
             }
 
             this.bitmap.UnlockBits(data);
 
-
-            depthImage.Source = Utils.getBitmapImage(bitmap);
+            // Update the image to have the bitmap image we just copied
+            image1.Source = getBitmapImage(bitmap);
         }
 
-
-        private unsafe void UpdatePlane()
-        {
-            // Recalculate the normal to the plane
-            normal = Utils.getNormal(p1, p2, p3);
-
-            DepthMetaData depthMD = new DepthMetaData();
-            System.Drawing.Rectangle rect = new System.Drawing.Rectangle(0, 0, this.bitmap.Width, this.bitmap.Height);
-            BitmapData data = this.bitmap.LockBits(rect, ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-
-            this.depth.GetMetaData(depthMD);
-
-            ushort* pDepth = (ushort*)this.depth.GetDepthMapPtr().ToPointer();
-
-            // set pixels
-            for (int y = 0; y < depthMD.YRes; ++y)
-            {
-                byte* pDest = (byte*)data.Scan0.ToPointer() + y * data.Stride;
-                for (int x = 0; x < depthMD.XRes; ++x, ++pDepth, pDest += 3)
-                {
-                    ushort z = *pDepth;
-                    // see if this point is within 100 mm of the plane
-                    Vector3D v = new Vector3D(x - p1.X, y - p1.Y, z - p1.Z);
-                    double distance = Vector3D.DotProduct(normal, v);
-                    if (Math.Abs(distance) < 100)
-                    {
-                        pDest[0] = 255;
-                        pDest[1] = 255;
-                        pDest[2] = 255;
-                    }
-                    else
-                    {
-                        pDest[0] = 0;
-                        pDest[1] = 0;
-                        pDest[2] = 0;
-                    }
-
-                }
-            }
-
-            this.bitmap.UnlockBits(data);
-
-
-            planeImage.Source = Utils.getBitmapImage(bitmap);
-        }
-
-        private unsafe void CalcHist(DepthMetaData depthMD)
-        {
-            // reset
-            for (int i = 0; i < this.histogram.Length; ++i)
-                this.histogram[i] = 0;
-
-            ushort* pDepth = (ushort*)depthMD.DepthMapPtr.ToPointer();
-
-            int points = 0;
-            for (int y = 0; y < depthMD.YRes; ++y)
-            {
-                for (int x = 0; x < depthMD.XRes; ++x, ++pDepth)
-                {
-                    ushort depthVal = *pDepth;
-                    if (depthVal != 0)
-                    {
-                        this.histogram[depthVal]++;
-                        points++;
-                    }
-                }
-            }
-
-            for (int i = 1; i < this.histogram.Length; i++)
-            {
-                this.histogram[i] += this.histogram[i - 1];
-            }
-
-            if (points > 0)
-            {
-                for (int i = 1; i < this.histogram.Length; i++)
-                {
-                    this.histogram[i] = (int)(256 * (1.0f - (this.histogram[i] / (float)points)));
-                }
-            }
-        }
-
+        /// <summary>
+        /// This method gets executed when the window loads. In it, we initialize our connection with Kinect
+        /// and set up the timer which will update our depth image.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            // Step 1: initialize depth generator
             try
             {
-                this.context = new Context(@"C:\Users\Julia\Documents\Visual Studio 2010\Projects\KinectTutorials\data\openniconfig.xml");
+                // Initialize the context from the configuration file
+                this.context = new Context(@"..\..\data\openniconfig.xml");
+                // Get the depth generator from the config file.
                 this.depth = context.FindExistingNode(NodeType.Depth) as DepthGenerator;
-                this.rgb = context.FindExistingNode(NodeType.Image) as ImageGenerator;
                 if (this.depth == null)
                     throw new Exception(@"Error in Data\openniconfig.xml. No depth node found.");
-                if (this.rgb == null)
-                    throw new Exception(@"Error in Data\openniconfig.xml. No rgb node found.");
                 MapOutputMode mapMode = this.depth.GetMapOutputMode();
-                this.histogram = new int[this.depth.GetDeviceMaxDepth()];
                 this.bitmap = new Bitmap((int)mapMode.nXRes, (int)mapMode.nYRes, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
             }
             catch (Exception ex)
             {
-                ///
-                /// - todo: proper error logging here
-                /// 
-
                 MessageBox.Show("Error initializing OpenNI.");
                 MessageBox.Show(ex.Message);
-
                 this.Close();
             }
 
+            // Set the timer to update teh depth image every 10 ms.
             DispatcherTimer dispatcherTimer = new DispatcherTimer();
             dispatcherTimer.Tick += new EventHandler(dispatcherTimer_Tick);
-            dispatcherTimer.Interval = new TimeSpan(0, 0, 0, 0, 30);
+            dispatcherTimer.Interval = new TimeSpan(0, 0, 0, 0, 10);
             dispatcherTimer.Start();
             Console.WriteLine("Finished loading");
         }
 
+        /// <summary>
+        /// This method gets executed every time the timer ticks, which is every 10 ms.
+        /// In it we update the depth image.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void dispatcherTimer_Tick(object sender, EventArgs e)
         {
             try
@@ -226,11 +134,23 @@ namespace DepthViewer
             {
             }
             UpdateDepth();
-            UpdateRGB();
-            UpdatePlane();
-
-            PointsLabel.Content = String.Format("P1: ({0},{1},{2})\nP2: ({3},{4},{5})\nP3: ({6},{7},{8})", p1.X, p1.Y, p1.Z, p2.X, p2.Y, p2.Z, p3.X, p3.Y, p3.Z);
         }
 
+        /// This method takes in a bitmap and returns
+        /// a BitmapImage which can be used to set the image source
+        /// of an Image object. It is an annoying but necessary method to correctly
+        /// display the depth image.
+        public static BitmapImage getBitmapImage(Bitmap bitmap)
+        {
+            MemoryStream ms = new MemoryStream();
+            bitmap.Save(ms, ImageFormat.Png);
+            ms.Position = 0;
+            BitmapImage bi = new BitmapImage();
+            bi.BeginInit();
+            ms.Seek(0, SeekOrigin.Begin);
+            bi.StreamSource = ms;
+            bi.EndInit();
+            return bi;
+        }
     }
 }
